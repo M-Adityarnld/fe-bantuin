@@ -10,6 +10,8 @@ interface User {
   profilePicture: string | null;
   isSeller: boolean;
   isVerified: boolean;
+  major: string;
+  batch: string;
 }
 
 interface AuthContextType {
