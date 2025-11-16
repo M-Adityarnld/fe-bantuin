@@ -1,17 +1,32 @@
+"use client";
+
+import { useState } from "react";
+import Image from "next/image";
 import { Button } from "./ui/button";
+import { getSupabaseUrl } from "@/lib/supabase";
+
+const videoSrc = getSupabaseUrl("bg.mp4");
+const imageSrc = getSupabaseUrl("service.jpg");
 
 const Hero = () => {
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+
   return (
     <section className="relative w-full h-[70vh] overflow-hidden">
-      {/* Video Background */}
+      {/* Image Placeholder Background */}
+      <Image src={imageSrc} alt="Bantuin background placeholder" fill priority sizes="100vw" unoptimized className={`object-cover transition-opacity duration-700 ${isVideoLoaded ? "opacity-0" : "opacity-100"}`} />
+
+      {/* Video Background with smooth fade-in */}
       <video
         autoPlay
         loop
         muted
         playsInline
-        className="absolute top-0 left-0 w-full h-full object-cover"
+        preload="auto"
+        onCanPlay={() => setIsVideoLoaded(true)}
+        className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-700 ${isVideoLoaded ? "opacity-100" : "opacity-0"}`}
       >
-        <source src="/bg.mp4" type="video/mp4" />
+        <source src={videoSrc} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
 
@@ -24,10 +39,7 @@ const Hero = () => {
           Temukan Bantuan di <span className="text-secondary">Bantuin</span>
         </h1>
 
-        <p className="text-white/90 text-base sm:text-lg md:text-xl max-w-3xl">
-          Platform marketplace jasa yang bakal ngehubungin antara si penyedia
-          dan pengguna jasa oleh dan buat mahasiswa di kampus UIN Suska Riau
-        </p>
+        <p className="text-white/90 text-base sm:text-lg md:text-xl max-w-3xl">Platform marketplace jasa yang bakal ngehubungin antara si penyedia dan pengguna jasa oleh dan buat mahasiswa di kampus UIN Suska Riau</p>
 
         {/* Optional: Search Bar */}
         <div className="mt-12 w-full max-w-2xl">
@@ -37,9 +49,7 @@ const Hero = () => {
               placeholder="Cari layanan yang kamu butuhin..."
               className="w-full px-6 py-4 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-secondary"
             />
-            <Button className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md">
-              Cari
-            </Button>
+            <Button className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md">Cari</Button>
           </div>
         </div>
       </div>
