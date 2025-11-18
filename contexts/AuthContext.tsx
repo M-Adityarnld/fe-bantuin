@@ -7,7 +7,7 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 interface User {
   id: string;
@@ -38,20 +38,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
-
-if (!API_URL && typeof window !== "undefined") {
-  console.error(
-    "NEXT_PUBLIC_API_URL is not set! Please check your environment variables."
-  );
-}
+// FIX 1: Tambahkan fallback URL agar tidak error jika ENV belum terbaca
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5500/api";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); // Mulai dengan loading true
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // 1. fetchUserProfile dibuat dengan useCallback
   const fetchUserProfile = useCallback(async (token: string) => {
     try {
       const response = await fetch(`${API_URL}/users/profile`, {
@@ -61,28 +55,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch profile");
+        // FIX 2: Hanya hapus token jika server menolak (401 Unauthorized)
+        if (response.status === 401) {
+          console.error("Token expired or invalid, logging out...");
+          localStorage.removeItem("access_token");
+          setUser(null);
+        } else {
+          console.error(`Failed to fetch profile: ${response.statusText}`);
+          // Jangan hapus user/token jika error server (500) atau jaringan
+        }
+        return null;
       }
 
       const result = await response.json();
-      setUser(result.data); // Set user
+      setUser(result.data);
       return result.data;
     } catch (error) {
-      console.error("Error fetching profile:", error);
-      localStorage.removeItem("access_token");
-      setUser(null); // Hapus user jika gagal
+      console.error("Network error fetching profile:", error);
+      // Jangan hapus token di sini agar user bisa refresh halaman
       return null;
     }
   }, []);
 
-  // 2. initAuth juga dibungkus useCallback
-  // Ini adalah satu-satunya fungsi yang akan mengontrol loading & fetch
   const initAuth = useCallback(async () => {
-    setLoading(true); // Selalu set loading true di awal
+    setLoading(true);
     try {
       const token = localStorage.getItem("access_token");
 
       if (token) {
+        // FIX 3: 'await' di sini memastikan loading tidak mati sebelum data ada
         await fetchUserProfile(token);
       } else {
         setUser(null);
@@ -91,119 +92,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Auth initialization error:", error);
       setUser(null);
     } finally {
-      setLoading(false); // Set loading false HANYA setelah semua selesai
+      setLoading(false);
     }
   }, [fetchUserProfile]);
 
-  // 3. useEffect utama untuk inisialisasi dan listener
   useEffect(() => {
-    initAuth(); // Jalankan saat mount
+    initAuth();
 
-    // Listener ini akan memanggil initAuth (yang mengatur loading)
+    // Listener agar sinkron antar tab
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "access_token") {
-        initAuth();
-      }
+      if (e.key === "access_token") initAuth();
     };
 
-    // Listener ini juga memanggil initAuth
-    const handleTokenSet = () => {
-      initAuth();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        const token = localStorage.getItem("access_token");
-        // Jika ada token tapi tidak ada user (misal tab di-restore)
-        if (token && !user) {
-          initAuth();
-        }
-      }
-    };
+    const handleTokenSet = () => initAuth();
 
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("tokenSet", handleTokenSet);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("tokenSet", handleTokenSet);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [initAuth, user]); // dependensi 'user' penting untuk 'visibilitychange'
+  }, [initAuth]);
 
-  // Login dengan Google
   const login = () => {
-    if (!API_URL) {
-      console.error(
-        "API_URL is not configured. Cannot redirect to Google OAuth."
-      );
-      alert("Configuration error: API URL is not set. Please contact support.");
-      return;
-    }
     window.location.href = `${API_URL}/auth/google`;
   };
 
-  // 5. Perbarui refreshUser agar mengatur loading state
-  const refreshUser = async () => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      setLoading(true);
-      await fetchUserProfile(token);
-      setLoading(false);
-    }
-  };
-
-  // 6. Perbarui activateSellerMode agar mengatur loading state
-  const activateSellerMode = async (phoneNumber: string, bio: string) => {
-    // State 'isActivating' di halaman /activate sudah cukup
-    // TAPI kita juga perlu update user di context, jadi kita panggil refreshUser
-    try {
-      const token = localStorage.getItem("access_token");
-
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
-
-      const response = await fetch(`${API_URL}/users/activate-seller`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          phoneNumber,
-          bio,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to activate seller mode");
-      }
-
-      // Langsung update user state dari data balikan
-      setUser(result.data);
-
-      router.push("/seller/dashboard");
-    } catch (error) {
-      console.error("Activate seller error:", error);
-      throw error;
-    }
-  };
-
-  // Logout
   const logout = async () => {
     try {
       const token = localStorage.getItem("access_token");
-
       if (token) {
         await fetch(`${API_URL}/auth/logout`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
       }
     } catch (error) {
@@ -212,6 +134,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("access_token");
       setUser(null);
       router.push("/");
+      router.refresh();
+    }
+  };
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      setLoading(true); // Tampilkan loading saat refresh manual
+      await fetchUserProfile(token);
+      setLoading(false);
+    }
+  };
+
+  const activateSellerMode = async (phoneNumber: string, bio: string) => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) throw new Error("Not authenticated");
+
+      const response = await fetch(`${API_URL}/users/activate-seller`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ phoneNumber, bio }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Failed");
+
+      // Update state user langsung
+      setUser(result.data);
+      router.push("/seller/dashboard");
+    } catch (error) {
+      console.error("Activate seller error:", error);
+      throw error;
     }
   };
 
