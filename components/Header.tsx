@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { FcGoogle } from "react-icons/fc";
-import { TbTools, TbDashboard } from "react-icons/tb"; // Tambah TbDashboard
+import { TbTools, TbDashboard, TbMail } from "react-icons/tb";
 import { HiMenu, HiX } from "react-icons/hi";
 import { IoLogOut, IoSettingsOutline } from "react-icons/io5";
 import { FiUser } from "react-icons/fi";
@@ -19,14 +19,33 @@ import Link from "next/link";
 import Image from "next/image";
 import Logo from "@/public/logo.png";
 import { useAuth } from "@/contexts/AuthContext";
+import { useChat } from "@/contexts/ChatContext";
+import { ChatInboxList } from "./chat/ChatInboxList";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, isAuthenticated, login, logout, loading } = useAuth();
+  const { isInboxOpen, toggleInbox } = useChat();
+
+  // Ref untuk mendeteksi klik di luar inbox
+  const inboxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        inboxRef.current &&
+        !inboxRef.current.contains(event.target as Node)
+      ) {
+        // Jangan tutup jika tombol toggle yang diklik (ditangani oleh toggleInbox)
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <header className="w-full sticky top-0 bg-white z-50 border-b border-b-accent">
-      <div className="h-16 md:h-20 lg:h-24 flex px-4 sm:px-6 md:px-12 lg:px-24 xl:px-48 items-center justify-between">
+      <div className="h-16 md:h-20 lg:h-24 flex px-4 sm:px-6 md:px-12 lg:px-24 xl:px-48 items-center justify-between relative">
         {/* Logo */}
         <div className="flex items-center">
           <Image
@@ -70,28 +89,46 @@ const Header = () => {
         </nav>
 
         {/* Desktop Action Buttons */}
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3" ref={inboxRef}>
           {loading ? (
             <div className="animate-pulse flex gap-2">
               <div className="h-10 w-32 bg-gray-200 rounded"></div>
-              <div className="h-10 w-24 bg-gray-200 rounded"></div>
             </div>
           ) : isAuthenticated && user ? (
             <>
+              {/* Tombol Inbox */}
+              <div className="relative">
+                <Button
+                  size="icon"
+                  className="relative rounded-full"
+                  onClick={toggleInbox}
+                >
+                  <TbMail className="h-5 w-5" />
+                </Button>
+
+                {/* Dropdown Inbox (Posisi di bawah tombol) */}
+                {isInboxOpen && (
+                  <div className="absolute right-0 mt-2 w-100 shadow-xl border z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 rounded-b-xl bg-gray-100">
+                    <div className="flex row gap-1 p-2 bg-white border-b font-semibold text-sm">
+                      <TbMail className="h-5 w-5" />
+                      <span>Pesan Masuk</span>
+                    </div>
+                    <ChatInboxList />
+                  </div>
+                )}
+              </div>
+
               <Button className="text-sm">
                 <TbTools className="text-white" />
                 <Link href="/seller/dashboard" className="hidden lg:inline">
                   Jadi Penyedia
                 </Link>
-                <Link href="/seller/dashboard" className="lg:hidden">
-                  Penyedia
-                </Link>
               </Button>
 
-              {/* User Dropdown Menu */}
+              {/* User Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                  <button className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ml-2">
                     {user.profilePicture ? (
                       <Image
                         src={user.profilePicture}
@@ -119,8 +156,6 @@ const Header = () => {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-
-                  {/* GANTI INI: Dashboard link */}
                   <DropdownMenuItem className="cursor-pointer" asChild>
                     <Link
                       href="/buyer/dashboard"
@@ -130,20 +165,9 @@ const Header = () => {
                       <span>Dashboard</span>
                     </Link>
                   </DropdownMenuItem>
-
-                  <DropdownMenuItem className="cursor-pointer" asChild>
-                    <Link
-                      href="/buyer/settings"
-                      className="flex items-center w-full"
-                    >
-                      <IoSettingsOutline className="mr-2 h-4 w-4" />
-                      <span>Pengaturan</span>
-                    </Link>
-                  </DropdownMenuItem>
-
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    className="cursor-pointer text-red-600 focus:text-red-600"
+                    className="cursor-pointer text-red-600"
                     onClick={logout}
                   >
                     <IoLogOut className="mr-2 h-4 w-4" />
@@ -153,17 +177,9 @@ const Header = () => {
               </DropdownMenu>
             </>
           ) : (
-            <>
-              <Button
-                variant="outline"
-                className="text-sm lg:text-base"
-                onClick={login}
-                disabled={loading}
-              >
-                <FcGoogle />
-                <span className="hidden sm:inline">Masuk</span>
-              </Button>
-            </>
+            <Button variant="outline" onClick={login}>
+              <FcGoogle /> <span className="hidden sm:inline">Masuk</span>
+            </Button>
           )}
         </div>
 
@@ -171,7 +187,6 @@ const Header = () => {
         <button
           className="md:hidden p-2 text-primary"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle menu"
         >
           {mobileMenuOpen ? (
             <HiX className="w-6 h-6" />
@@ -180,88 +195,6 @@ const Header = () => {
           )}
         </button>
       </div>
-
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-accent bg-white">
-          <nav className="px-4 py-4">
-            <ul className="flex flex-col gap-2">
-              <li>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Link href="/services">Jelajahi Jasa</Link>
-                </Button>
-              </li>
-              <li>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Link href="/why">Ngapain di Bantuin?</Link>
-                </Button>
-              </li>
-              <li>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Link href="/who">Tentang Kami</Link>
-                </Button>
-              </li>
-              <li>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Link href="/how">Cara Kerja</Link>
-                </Button>
-              </li>
-            </ul>
-
-            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-accent">
-              {isAuthenticated && user ? (
-                <>
-                  <div className="flex items-center gap-2 px-2 py-2">
-                    {user.profilePicture ? (
-                      <Image
-                        src={user.profilePicture}
-                        alt={user.fullName}
-                        width={32}
-                        height={32}
-                        className="rounded-full"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                        <FiUser className="w-4 h-4 text-primary" />
-                      </div>
-                    )}
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">
-                        {user.fullName}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {user.email}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button className="w-full">
-                    <TbTools className="text-white" />
-                    <Link href="/seller/dashboard">Jadi Penyedia</Link>
-                  </Button>
-
-                  <Button variant="ghost" className="w-full justify-start">
-                    <TbDashboard className="mr-2 h-4 w-4" />
-                    <Link href="/buyer/dashboard">Dashboard</Link>
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="w-full text-red-600 hover:text-red-700"
-                    onClick={logout}
-                  >
-                    <IoLogOut /> Keluar
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" className="w-full" onClick={login}>
-                  <FcGoogle /> Masuk
-                </Button>
-              )}
-            </div>
-          </nav>
-        </div>
-      )}
     </header>
   );
 };
