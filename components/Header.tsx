@@ -17,7 +17,7 @@ import { IoLogOut, IoSettingsOutline } from "react-icons/io5";
 import { FiUser } from "react-icons/fi";
 import Link from "next/link";
 import Image from "next/image";
-import Logo from "@/public/logo.png";
+import Logo from "@/public/logo.svg";
 import { useAuth } from "@/contexts/AuthContext";
 import { Bell } from "lucide-react";
 
@@ -40,7 +40,7 @@ const Header = () => {
             height={36}
             className="md:w-10 md:h-10 lg:w-12 lg:h-12"
           />
-          <h1 className="font-display text-primary font-bold text-2xl md:text-3xl lg:text-4xl">
+          <h1 className="font-display text-primary text-xl md:text-2xl lg:text-3xl">
             <Link href="/">
               Bant<span className="text-secondary">uin</span>
             </Link>
