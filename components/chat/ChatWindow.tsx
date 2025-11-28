@@ -20,16 +20,14 @@ export const ChatWindow = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const messageTemplates = [
-    "Assalamualaikum",
-    "Waalaikum salam",
-    "Halo kak",
-    "Terima kasih",
-    "Sama-sama",
-    "Apakah ini ready?",
-    "Mohon ditunggu sebentar",
-    "Oke siap",
-    "Ada yang bisa dibantu?",
-    "Baik, dimengerti",
+    "Assalamualaikum 🙏",
+    "Waalaikumsalam 😊",
+    "Halo kak 👋",
+    "Terima kasih 🙏",
+    "Sama-sama 😊",
+    "Apakah jasanya ready? 🤔",
+    "Oke siap 👍",
+    "Mantap kak 👏",
   ];
 
   useEffect(() => {
