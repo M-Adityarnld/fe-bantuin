@@ -11,7 +11,6 @@ import React, {
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 
-// Helper untuk membersihkan URL
 const getSocketUrl = () => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5500/api";
   return apiUrl.replace(/\/api\/?$/, "");
@@ -35,6 +34,7 @@ export interface Conversation {
   id: string;
   lastMessage?: {
     content: string;
+    senderId: string;
     createdAt: string;
   };
   participants: {
@@ -42,6 +42,7 @@ export interface Conversation {
       id: string;
       fullName: string;
       profilePicture: string | null;
+      major?: string | null;
     };
   }[];
 }
@@ -50,6 +51,7 @@ interface RecipientData {
   id: string;
   fullName: string;
   profilePicture: string | null;
+  major?: string | null;
 }
 
 interface ChatContextType {
@@ -95,9 +97,52 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
   const activeConversationRef = useRef(activeConversation);
 
+  // Load cache saat start
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedCache = localStorage.getItem("chat_messages_cache");
+      if (savedCache) {
+        try {
+          setMessagesCache(JSON.parse(savedCache));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(messagesCache).length > 0) {
+      localStorage.setItem(
+        "chat_messages_cache",
+        JSON.stringify(messagesCache)
+      );
+    }
+  }, [messagesCache]);
+
   useEffect(() => {
     activeConversationRef.current = activeConversation;
   }, [activeConversation]);
+
+  // Fetch Inbox Helper
+  const fetchConversations = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return [];
+      const res = await fetch("/api/chat", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations(data.data);
+        return data.data as Conversation[];
+      }
+      return [];
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  }, []);
 
   // 1. Setup Socket
   useEffect(() => {
@@ -106,7 +151,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         socket.disconnect();
         setSocket(null);
         setIsConnected(false);
-        setMessagesCache({});
       }
       return;
     }
@@ -124,8 +168,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     newSocket.on("connect", () => {
       console.log("✅ Socket Connected");
       setIsConnected(true);
-
-      // Re-fetch jika sedang membuka chat
       if (
         activeConversationRef.current &&
         activeConversationRef.current.id !== "new"
@@ -134,75 +176,79 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    newSocket.on("disconnect", () => {
-      setIsConnected(false);
-    });
+    newSocket.on("disconnect", () => setIsConnected(false));
 
-    // Listener: Pesan Masuk (Real-time)
     newSocket.on("newMessage", (message: Message) => {
       const chatId = message.conversationId;
 
       setMessagesCache((prevCache) => {
         const currentMessages = prevCache[chatId] || [];
-
         if (currentMessages.some((m) => m.id === message.id)) return prevCache;
-
-        // Hapus pesan optimistic yang cocok
         const filtered = currentMessages.filter(
           (m) => !(m.id.startsWith("temp-") && m.content === message.content)
         );
-
-        return {
-          ...prevCache,
-          [chatId]: [...filtered, message],
-        };
+        return { ...prevCache, [chatId]: [...filtered, message] };
       });
 
-      if (activeConversationRef.current?.id !== chatId) {
-        fetchConversations();
-      }
+      setConversations((prevConvs) => {
+        // Cari index percakapan ini di list
+        const index = prevConvs.findIndex((c) => c.id === chatId);
+
+        // Jika belum ada (chat baru), terpaksa fetch ulang
+        if (index === -1) {
+          fetchConversations();
+          return prevConvs;
+        }
+
+        // Copy array agar immutable
+        const newConvs = [...prevConvs];
+
+        // Update lastMessage percakapan tersebut
+        const updatedConv = {
+          ...newConvs[index],
+          lastMessage: {
+            content: message.content,
+            senderId: message.senderId,
+            createdAt: message.createdAt,
+          },
+        };
+
+        // Pindahkan ke paling atas (Urutan 0) karena baru aktif
+        newConvs.splice(index, 1); // Hapus dari posisi lama
+        newConvs.unshift(updatedConv); // Masukkan ke atas
+
+        return newConvs;
+      });
     });
 
-    // Listener: History (PERBAIKAN DUPLIKASI DI SINI)
+    // Listener History
     newSocket.on("messageHistory", (history: Message[]) => {
       if (!history || history.length === 0) return;
-
       const chatId = history[0].conversationId;
 
       setMessagesCache((prevCache) => {
         const currentMessages = prevCache[chatId] || [];
-
-        // 1. Ambil pesan yang masih berstatus 'pending' (temp-)
         let pendingMessages = currentMessages.filter((m) =>
           m.id.startsWith("temp-")
         );
 
-        // 2. FILTER PENTING: Buang pesan pending yang SUDAH ADA di history server
-        // Ini mencegah duplikasi saat reload/reopen chat
         pendingMessages = pendingMessages.filter((tempMsg) => {
-          const existsInHistory = history.some(
+          return !history.some(
             (histMsg) =>
               histMsg.content === tempMsg.content &&
               histMsg.senderId === tempMsg.senderId
           );
-          return !existsInHistory; // Keep only if NOT in history
         });
 
-        // 3. Gabung dan urutkan
         const combined = [...history, ...pendingMessages].sort(
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
 
-        // 4. Deduplikasi final by ID (Safety net)
         const uniqueMessages = Array.from(
           new Map(combined.map((m) => [m.id, m])).values()
         );
-
-        return {
-          ...prevCache,
-          [chatId]: uniqueMessages,
-        };
+        return { ...prevCache, [chatId]: uniqueMessages };
       });
     });
 
@@ -211,33 +257,21 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [isAuthenticated, user]);
-
-  // 2. Fetch Inbox
-  const fetchConversations = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("access_token");
-      if (!token) return [];
-      const res = await fetch("/api/chat", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setConversations(data.data);
-        return data.data as Conversation[];
-      }
-      return [];
-    } catch (error) {
-      console.error("Failed to fetch conversations", error);
-      return [];
-    }
-  }, []);
+  }, [isAuthenticated, user, fetchConversations]);
 
   useEffect(() => {
     if (isAuthenticated) fetchConversations();
   }, [isAuthenticated, fetchConversations]);
 
-  // --- ACTIONS ---
+  useEffect(() => {
+    if (!activeConversation || activeConversation.id === "new") return;
+    const cachedMessages = messagesCache[activeConversation.id];
+    const hasMessages = cachedMessages && cachedMessages.length > 0;
+
+    if ((!hasMessages || isConnected) && socket) {
+      socket.emit("getHistory", activeConversation.id);
+    }
+  }, [activeConversation?.id, isConnected]);
 
   const toggleInbox = () => {
     if (!isInboxOpen) fetchConversations();
@@ -248,7 +282,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     setIsInboxOpen(true);
     fetchConversations();
   };
-
   const closeChatWindow = () => {
     setActiveConversation(null);
   };
@@ -263,7 +296,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     let existing = conversations.find((c) =>
       c.participants.some((p) => p.user.id === recipient.id)
     );
-
     if (!existing) {
       const freshConversations = await fetchConversations();
       existing = freshConversations.find((c) =>
@@ -273,11 +305,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
     if (existing) {
       setActiveConversation(existing);
-
-      // Selalu minta history terbaru saat membuka chat
-      if (socket && socket.connected) {
-        socket.emit("getHistory", existing.id);
-      }
+      if (socket && socket.connected) socket.emit("getHistory", existing.id);
     } else {
       setMessagesCache((prev) => ({ ...prev, new: [] }));
       const draftConversation: Conversation = {
@@ -289,15 +317,13 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
               id: user.id,
               fullName: user.fullName,
               profilePicture: user.profilePicture,
+              major: user.major,
             },
           },
         ],
       };
       setActiveConversation(draftConversation);
-
-      if (initialMessage) {
-        setTimeout(() => sendMessage(initialMessage), 100);
-      }
+      if (initialMessage) setTimeout(() => sendMessage(initialMessage), 100);
     }
   };
 
@@ -313,10 +339,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       senderId: user.id,
       conversationId: chatId,
       createdAt: new Date().toISOString(),
-      sender: {
-        fullName: user.fullName,
-        profilePicture: user.profilePicture,
-      },
+      sender: { fullName: user.fullName, profilePicture: user.profilePicture },
     };
 
     setMessagesCache((prev) => ({
@@ -350,8 +373,6 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (activeConversation.id === "new") {
           await fetchConversations();
-
-          // Migrasi pesan dari 'new' ke ID asli
           setMessagesCache((prev) => {
             const draftMsgs = prev["new"] || [];
             const migratedMsgs = draftMsgs.map((m) => ({
@@ -366,19 +387,19 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
             ];
             return newState;
           });
-
           setActiveConversation((prev) =>
             prev ? { ...prev, id: realConvId } : null
           );
+        }
 
-          // Panggil history untuk memastikan sinkronisasi
-          if (socket) socket.emit("getHistory", realConvId);
+        if (socket && socket.connected) {
+          socket.emit("getHistory", realConvId);
         }
       } else {
-        throw new Error(data.error || "Failed to send");
+        throw new Error(data.error || "Failed");
       }
     } catch (error) {
-      console.error("Gagal mengirim pesan", error);
+      console.error(error);
       setMessagesCache((prev) => ({
         ...prev,
         [chatId]: (prev[chatId] || []).filter((m) => m.id !== tempId),

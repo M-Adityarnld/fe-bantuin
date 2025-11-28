@@ -33,7 +33,7 @@ export const ChatInboxList = () => {
             <div
               key={conv.id}
               className="p-3 hover:bg-gray-100 bg-white cursor-pointer transition-colors flex gap-3 items-center"
-              onClick={() => openChatWith(otherParticipant)} // Buka chat window saat diklik
+              onClick={() => openChatWith(otherParticipant)}
             >
               <Avatar className="h-10 w-10 border">
                 <AvatarImage src={otherParticipant.profilePicture || ""} />
@@ -41,7 +41,7 @@ export const ChatInboxList = () => {
               </Avatar>
               <div className="flex-1 overflow-hidden">
                 <div className="flex justify-between items-center mb-1">
-                  <h4 className="font-semibold text-sm truncate">
+                  <h4 className="font-semibold text-md truncate">
                     {otherParticipant.fullName}
                   </h4>
                   {conv.lastMessage && (

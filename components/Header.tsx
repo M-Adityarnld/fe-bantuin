@@ -13,7 +13,7 @@ import {
 import { FcGoogle } from "react-icons/fc";
 import { TbTools, TbDashboard, TbMail } from "react-icons/tb";
 import { HiMenu, HiX } from "react-icons/hi";
-import { IoLogOut, IoSettingsOutline } from "react-icons/io5";
+import { IoLogOut } from "react-icons/io5";
 import { FiUser } from "react-icons/fi";
 import Link from "next/link";
 import Image from "next/image";
@@ -25,7 +25,9 @@ import { ChatInboxList } from "./chat/ChatInboxList";
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, isAuthenticated, login, logout, loading } = useAuth();
-  const { isInboxOpen, toggleInbox } = useChat();
+
+  // Ambil unreadCount dari context
+  const { isInboxOpen, toggleInbox, unreadCount } = useChat();
 
   // Ref untuk mendeteksi klik di luar inbox
   const inboxRef = useRef<HTMLDivElement>(null);
@@ -96,22 +98,33 @@ const Header = () => {
             </div>
           ) : isAuthenticated && user ? (
             <>
-              {/* Tombol Inbox */}
               <div className="relative">
                 <Button
+                  variant="ghost"
                   size="icon"
-                  className="relative rounded-full"
+                  className="relative rounded-full hover:bg-gray-100 text-gray-600"
                   onClick={toggleInbox}
                 >
-                  <TbMail className="h-5 w-5" />
+                  <TbMail className="h-10 w-10" />
+
+                  {/* Badge Notifikasi Merah */}
+                  {unreadCount > 0 && (
+                    <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-white pointer-events-none" />
+                  )}
                 </Button>
 
-                {/* Dropdown Inbox (Posisi di bawah tombol) */}
+                {/* Dropdown Inbox */}
                 {isInboxOpen && (
-                  <div className="absolute right-0 mt-2 w-100 shadow-xl border z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 rounded-b-xl bg-gray-100">
-                    <div className="flex row gap-1 p-2 bg-white border-b font-semibold text-sm">
-                      <TbMail className="h-5 w-5" />
-                      <span>Pesan Masuk</span>
+                  <div className="absolute right-0 top-full mt-2 w-80 md:w-96 shadow-xl border border-gray-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 rounded-xl bg-white">
+                    <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+                      <span className="font-semibold text-sm text-gray-900">
+                        Pesan Masuk
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                          {unreadCount} baru
+                        </span>
+                      )}
                     </div>
                     <ChatInboxList />
                   </div>
@@ -128,7 +141,7 @@ const Header = () => {
               {/* User Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ml-2">
+                  <button className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ml-2 transition-transform active:scale-95">
                     {user.profilePicture ? (
                       <Image
                         src={user.profilePicture}
