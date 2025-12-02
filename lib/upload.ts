@@ -21,6 +21,11 @@ export interface UploadError {
   error: string;
 }
 
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+}
+
 /**
  * Get authentication token from localStorage
  */
@@ -201,6 +206,31 @@ export async function uploadBuyerOrderPhoto(file: File, fullName: string, orderN
   if (!response.ok) {
     const error: UploadError = await response.json();
     throw new Error(error.message || "Buyer order photo upload failed");
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete file from Supabase Storage
+ * @param path - The path to the file in storage (e.g., "uploads/user-name/file.jpg")
+ */
+export async function deleteFile(path: string): Promise<DeleteResponse> {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error("Authentication required. Please login first.");
+  }
+
+  const response = await fetch(`${API_URL}/upload?path=${encodeURIComponent(path)}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error: UploadError = await response.json();
+    throw new Error(error.message || "Delete failed");
   }
 
   return response.json();

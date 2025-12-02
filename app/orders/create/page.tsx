@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { TbLoader, TbAlertCircle, TbX } from "react-icons/tb";
-import { uploadBuyerOrderPhoto } from "@/lib/upload";
+import { TbLoader, TbAlertCircle, TbX, TbFileUpload } from "react-icons/tb";
+import { uploadBuyerOrderPhoto, deleteFile } from "@/lib/upload";
+import Image from "next/image";
 
 const CreateOrderContent = () => {
   const router = useRouter();
@@ -20,7 +21,7 @@ const CreateOrderContent = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [requirements, setRequirements] = useState("");
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<Array<{ url: string; path: string }>>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -47,8 +48,11 @@ const CreateOrderContent = () => {
       const uploadPromises = Array.from(files).map((file) => uploadBuyerOrderPhoto(file, user.fullName, orderName, user.nim));
 
       const results = await Promise.all(uploadPromises);
-      const newUrls = results.map((result) => result.data.url);
-      setAttachments((prev) => [...prev, ...newUrls]);
+      const newAttachments = results.map((result) => ({
+        url: result.data.url,
+        path: result.data.path,
+      }));
+      setAttachments((prev) => [...prev, ...newAttachments]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal mengupload file");
     } finally {
@@ -59,8 +63,20 @@ const CreateOrderContent = () => {
     }
   };
 
-  const handleRemoveAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  const handleRemoveAttachment = async (index: number) => {
+    const attachment = attachments[index];
+    if (!attachment) return;
+
+    try {
+      // Delete file from storage
+      await deleteFile(attachment.path);
+      // Remove from state
+      setAttachments((prev) => prev.filter((_, i) => i !== index));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menghapus file");
+      // Still remove from UI even if delete fails (file might already be deleted)
+      setAttachments((prev) => prev.filter((_, i) => i !== index));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,7 +95,7 @@ const CreateOrderContent = () => {
         body: JSON.stringify({
           serviceId,
           requirements,
-          attachments,
+          attachments: attachments.map((att) => att.url),
         }),
       });
 
@@ -128,15 +144,32 @@ const CreateOrderContent = () => {
                   )}
                 </div>
                 {attachments.length > 0 && (
-                  <div className="space-y-2 mt-2">
-                    {attachments.map((url, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
-                        <span className="truncate flex-1">{url}</span>
-                        <Button type="button" size="icon-sm" variant="ghost" onClick={() => handleRemoveAttachment(idx)} className="h-6 w-6">
-                          <TbX className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
+                    {attachments.map((attachment, idx) => {
+                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.url);
+                      return (
+                        <div key={idx} className="relative group">
+                          {isImage ? (
+                            <div className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted">
+                              <Image src={attachment.url} alt={`Attachment ${idx + 1}`} fill className="object-cover" sizes="(max-width: 640px) 50vw, 33vw" />
+                              <Button type="button" size="icon-sm" variant="destructive" onClick={() => handleRemoveAttachment(idx)} className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <TbX className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center">
+                              <div className="text-center p-2">
+                                <TbFileUpload className="h-8 w-8 mx-auto text-muted-foreground mb-1" />
+                                <p className="text-xs text-muted-foreground truncate px-1">File</p>
+                              </div>
+                              <Button type="button" size="icon-sm" variant="destructive" onClick={() => handleRemoveAttachment(idx)} className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <TbX className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">Upload file pendukung untuk membantu penyedia jasa memahami kebutuhan Anda</p>
