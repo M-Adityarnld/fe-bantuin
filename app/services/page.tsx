@@ -122,7 +122,7 @@ const ServicesPage = () => {
 
   return (
     <PublicLayout>
-      <div className="min-h-screen bg-gray-50 py-8">
+      <div className="min-h-screen  py-8">
         <div className="container mx-auto px-4">
           {/* Header */}
           <div className="mb-8">
@@ -251,7 +251,7 @@ const ServicesPage = () => {
               ) : (
                 <>
                   {/* Services Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
                     {services.map((service) => (
                       <ServiceCard key={service.id} service={service} />
                     ))}
